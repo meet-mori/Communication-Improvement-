@@ -113,6 +113,7 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
           config: { 
               responseMimeType: "application/json", 
               responseSchema: analysisSchema,
+              temperature : 0.1
           }
       })
     );

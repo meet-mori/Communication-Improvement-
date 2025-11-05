@@ -104,8 +104,24 @@ const analysisSchema = {
         required: ["speaker", "text"],
       },
     },
+    personalizedSuggestions: {
+        type: Type.OBJECT,
+        description: "Personalized coaching plan focusing on the weakest area with actionable tips and resource links.",
+        properties: {
+            areaForFocus: {
+                type: Type.STRING,
+                description: "The single most critical area for improvement (e.g., 'Vocabulary', 'Grammar', 'Fluency')."
+            },
+            suggestions: {
+                type: Type.ARRAY,
+                description: "A list of actionable suggestions, including markdown links to external resources.",
+                items: { type: Type.STRING },
+            }
+        },
+        required: ["areaForFocus", "suggestions"],
+    }
   },
-  required: ["primarySpeakerLabel", "dimensions", "fluencySpeechRatePercentage", "feedback", "fillerWords", "conversation"],
+  required: ["primarySpeakerLabel", "dimensions", "fluencySpeechRatePercentage", "feedback", "fillerWords", "conversation", "personalizedSuggestions"],
 };
 
 const singleAnalysisPrompt = `You are a world-class speech and communication coach. Analyze the speech from the provided audio file. The audio may contain a conversation between two or more speakers.
@@ -121,7 +137,9 @@ Instructions:
 8.  Provide a list of the most frequently used filler words by the primary speaker and their counts.
 9.  Offer a bulleted list of 3-5 clear, actionable 'feedback' points for the primary speaker's improvement. As part of the feedback, specifically mention their estimated speech rate in words-per-minute (WPM).
 10. In the 'conversation' array of the JSON output, use the actual speaker labels you identified ('Speaker A', 'Speaker B', etc.) for the 'speaker' field for every turn.
-11. Return the entire analysis in the specified JSON format. Do NOT include an 'overallScore' field in your response.`;
+11. After the main analysis, identify the single most critical area for improvement for the primary speaker from their dimension scores and fluency (e.g., 'Vocabulary', 'Grammar', 'Fluency', 'Clarity', 'Conciseness').
+12. Based on this weakest area, provide a 'personalizedSuggestions' object. This object must contain an 'areaForFocus' string and a 'suggestions' array with 2-3 specific, actionable tips. For at least one tip, include a markdown link to a helpful external resource (e.g., a relevant YouTube video, an educational article, or a practice tool). Example markdown format: [Resource Title](https://example.com).
+13. Return the entire analysis in the specified JSON format. Do NOT include an 'overallScore' field in your response.`;
 
 
 export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => {

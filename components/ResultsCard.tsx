@@ -85,6 +85,43 @@ const MistakeHighlighter: React.FC<{ turn: ConversationTurn }> = ({ turn }) => {
     );
 };
 
+// A component to handle rendering text with markdown links as clickable anchors.
+const RenderWithLinks: React.FC<{ text: string }> = ({ text }) => {
+    // Regex to find markdown links: [text](url)
+    const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+    // FIX: Replaced `(string | JSX.Element)[]` with `React.ReactNode[]` to fix "Cannot find namespace 'JSX'" error.
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = linkRegex.exec(text)) !== null) {
+        // Push text before the link
+        if (match.index > lastIndex) {
+            parts.push(text.substring(lastIndex, match.index));
+        }
+        // Push the link
+        const [fullMatch, linkText, url] = match;
+        parts.push(
+            <a
+                key={url + match.index}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-400 underline hover:text-indigo-300 transition-colors"
+            >
+                {linkText}
+            </a>
+        );
+        lastIndex = match.index + fullMatch.length;
+    }
+
+    // Push remaining text after the last link
+    if (lastIndex < text.length) {
+        parts.push(text.substring(lastIndex));
+    }
+
+    return <>{parts.map((part, i) => <React.Fragment key={i}>{part}</React.Fragment>)}</>;
+};
 
 export const ResultsCard: React.FC<{ result: AnalysisResult, title?: string }> = ({ result, title = "Analysis Report" }) => {
   const handleExport = () => {
@@ -158,6 +195,26 @@ export const ResultsCard: React.FC<{ result: AnalysisResult, title?: string }> =
             </div>
         </div>
       </div>
+
+      {/* Personalized Coaching Plan */}
+      {result.personalizedSuggestions && (
+        <div className="bg-gray-800 p-4 sm:p-6 rounded-lg">
+            <h3 className="text-xl font-bold text-indigo-400 mb-4">Personalized Coaching Plan</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                <div className="md:col-span-1 bg-gray-900/50 p-4 rounded-lg text-center">
+                    <p className="text-sm font-semibold text-gray-400 mb-1">Primary Focus Area</p>
+                    <p className="text-2xl font-bold text-white">{result.personalizedSuggestions.areaForFocus}</p>
+                </div>
+                <div className="md:col-span-2">
+                    <ul className="list-disc list-inside space-y-3 text-gray-300 text-sm sm:text-base">
+                        {result.personalizedSuggestions.suggestions.map((suggestion, i) => (
+                            <li key={i}><RenderWithLinks text={suggestion} /></li>
+                        ))}
+                    </ul>
+                </div>
+            </div>
+        </div>
+       )}
 
       {/* Transcript */}
       <div className="bg-gray-800 p-4 sm:p-6 rounded-lg">

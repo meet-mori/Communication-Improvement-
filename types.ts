@@ -20,6 +20,11 @@ export interface FillerWord {
   count: number;
 }
 
+export interface PersonalizedSuggestion {
+  areaForFocus: string;
+  suggestions: string[];
+}
+
 export interface AnalysisResult {
   overallScore: number;
   dimensions: Dimension[];
@@ -28,6 +33,7 @@ export interface AnalysisResult {
   conversation: ConversationTurn[];
   fluencySpeechRatePercentage: number;
   primarySpeakerLabel: string; // Added to identify the main speaker in the transcript
+  personalizedSuggestions: PersonalizedSuggestion;
 }
 
 // Types for improvement tracking

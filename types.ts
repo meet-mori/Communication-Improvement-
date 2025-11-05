@@ -5,7 +5,7 @@ export interface Mistake {
 }
 
 export interface ConversationTurn {
-  speaker: 'User' | 'AI';
+  speaker: string; // Changed from 'User' | 'AI' to string to support 'Speaker A', etc.
   text: string;
   mistake?: Mistake;
 }
@@ -27,6 +27,7 @@ export interface AnalysisResult {
   fillerWords: FillerWord[];
   conversation: ConversationTurn[];
   fluencySpeechRatePercentage: number;
+  primarySpeakerLabel: string; // Added to identify the main speaker in the transcript
 }
 
 // Types for improvement tracking

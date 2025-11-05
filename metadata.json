@@ -1,5 +1,7 @@
 {
   "name": "RateMySpeak - AI Speech Coach",
   "description": "Upload a conversation audio to get AI-powered feedback on your communication skills. Track your improvement over time by comparing old and new recordings.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }

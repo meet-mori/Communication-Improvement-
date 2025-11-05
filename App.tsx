@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { ResultsCard, ComparisonResultsCard } from './components/ResultsCard';
+import { LivePractice } from './components/LivePractice';
 import { AnalysisResult, ComparisonResult } from './types';
 import { analyzeAudio, generateComparisonReport } from './services/geminiService';
 
 type AppState = 'idle' | 'loading' | 'success' | 'error';
-type ActiveTab = 'analyze' | 'compare';
+type ActiveTab = 'analyze' | 'compare' | 'live';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('analyze');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('live');
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState<string>('Analyzing... This may take a few moments.');
@@ -78,8 +79,12 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    // Fix: Hoist loading state check to a variable to avoid TypeScript control-flow analysis errors.
     const isLoading = appState === 'loading';
+
+    // The LivePractice component now manages its own state and is independent of the app's loading/error/success flow.
+    if (activeTab === 'live') {
+        return <LivePractice />;
+    }
 
     if (isLoading) {
       return (
@@ -113,7 +118,7 @@ const App: React.FC = () => {
                 onClick={handleReset} 
                 className="mt-8 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors"
             >
-                Analyze Another Audio
+                Analyze Another File
             </button>
         </div>;
       }
@@ -129,23 +134,20 @@ const App: React.FC = () => {
     
     // Idle state
     if (activeTab === 'analyze') {
-      // Fix: Use the isLoading boolean constant.
       return <FileUpload onFileSelect={handleSingleFile} disabled={isLoading} />;
     }
-
+    
     if (activeTab === 'compare') {
       return (
         <div className='w-full max-w-4xl space-y-6'>
             <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
                 <div>
                     <h3 className='text-center text-lg font-semibold mb-2 text-gray-400'>Older Audio</h3>
-                    {/* Fix: Use the isLoading boolean constant. */}
                     <FileUpload onFileSelect={setOldFile} disabled={isLoading} />
                     {oldFile && <p className='text-center mt-2 text-indigo-400 truncate'>{oldFile.name}</p>}
                 </div>
                 <div>
                     <h3 className='text-center text-lg font-semibold mb-2 text-gray-400'>Newer Audio</h3>
-                    {/* Fix: Use the isLoading boolean constant. */}
                     <FileUpload onFileSelect={setNewFile} disabled={isLoading} />
                     {newFile && <p className='text-center mt-2 text-indigo-400 truncate'>{newFile.name}</p>}
                 </div>
@@ -153,7 +155,6 @@ const App: React.FC = () => {
             <div className='text-center'>
                  <button 
                     onClick={handleComparisonFiles} 
-                    // Fix: Use the isLoading boolean constant.
                     disabled={!oldFile || !newFile || isLoading}
                     className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
                 >
@@ -170,23 +171,30 @@ const App: React.FC = () => {
       <header className="w-full max-w-4xl text-center mb-8">
         <h1 className="text-4xl sm:text-5xl font-bold mb-2 text-white">Rate<span className="text-indigo-400">My</span>Speak</h1>
         <p className="text-base sm:text-lg text-gray-400">
-          Get AI-powered feedback on your communication skills.
+          Your personal AI speech coach. Analyze recordings, practice live, and track your progress.
         </p>
       </header>
       
       {/* Tabs */}
-       <div className="mb-8 flex justify-center p-1 bg-gray-800 rounded-lg">
+       <div className="mb-8 flex flex-wrap justify-center p-1 bg-gray-800 rounded-lg">
+        <button 
+            onClick={() => { handleReset(); setActiveTab('live'); }} 
+            disabled={appState === 'loading'}
+            className={`px-4 sm:px-6 py-2 rounded-md transition-colors text-sm font-medium ${activeTab === 'live' ? 'bg-indigo-600' : 'hover:bg-gray-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          Live Practice
+        </button>
         <button 
             onClick={() => { handleReset(); setActiveTab('analyze'); }} 
             disabled={appState === 'loading'}
-            className={`px-4 sm:px-6 py-2 rounded-md transition-colors ${activeTab === 'analyze' ? 'bg-indigo-600' : 'hover:bg-gray-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-4 sm:px-6 py-2 rounded-md transition-colors text-sm font-medium ${activeTab === 'analyze' ? 'bg-indigo-600' : 'hover:bg-gray-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
-          Analyze Performance
+          Analyze File
         </button>
         <button 
             onClick={() => { handleReset(); setActiveTab('compare'); }} 
             disabled={appState === 'loading'}
-            className={`px-4 sm:px-6 py-2 rounded-md transition-colors ${activeTab === 'compare' ? 'bg-indigo-600' : 'hover:bg-gray-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-4 sm:px-6 py-2 rounded-md transition-colors text-sm font-medium ${activeTab === 'compare' ? 'bg-indigo-600' : 'hover:bg-gray-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           Track Improvement
         </button>

@@ -1,6 +1,26 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, ComparisonResult, Dimension } from '../types';
 
+export const getPracticePrompt = async (): Promise<string> => {
+    try {
+        const ai = getAiClient();
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: 'Generate a short, engaging, and random prompt for a user to practice their public speaking and communication skills. The prompt should be a single sentence or question. For example: "Describe your dream vacation." or "Explain a complex topic you are passionate about in simple terms."',
+            config: {
+                temperature: 0.9,
+                maxOutputTokens: 50,
+            }
+        });
+        // Clean up the response, removing potential quotes or extra text
+        return response.text.trim().replace(/^"|"$/g, '');
+    } catch (error) {
+        console.error("Error fetching practice prompt:", error);
+        // Return a fallback prompt
+        return "Describe something you are passionate about.";
+    }
+};
+
 // Utility function to convert file to base64
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -26,6 +46,10 @@ const getAiClient = () => {
 const analysisSchema = {
   type: Type.OBJECT,
   properties: {
+    primarySpeakerLabel: {
+        type: Type.STRING,
+        description: "The label (e.g., 'Speaker A') assigned to the primary speaker who was analyzed."
+    },
     dimensions: {
       type: Type.ARRAY,
       description: "Scores for the three primary communication dimensions (Clarity, Language Proficiency, Conciseness) on a 0-5 scale.",
@@ -61,11 +85,11 @@ const analysisSchema = {
     },
     conversation: {
       type: Type.ARRAY,
-      description: "The full conversation transcript.",
+      description: "The full conversation transcript with each speaker identified.",
       items: {
         type: Type.OBJECT,
         properties: {
-          speaker: { type: Type.STRING, enum: ["User", "AI"] },
+          speaker: { type: Type.STRING }, // Generic string to allow for 'Speaker A', 'Speaker B', etc.
           text: { type: Type.STRING },
           mistake: {
             type: Type.OBJECT,
@@ -81,21 +105,23 @@ const analysisSchema = {
       },
     },
   },
-  // Note: overallScore is removed from schema requirements as it's calculated client-side now.
-  required: ["dimensions", "fluencySpeechRatePercentage", "feedback", "fillerWords", "conversation"],
+  required: ["primarySpeakerLabel", "dimensions", "fluencySpeechRatePercentage", "feedback", "fillerWords", "conversation"],
 };
 
-const singleAnalysisPrompt = `You are a world-class speech and communication coach. Analyze the user's speech from the provided audio file, which contains a conversation between a 'User' and an 'AI'.
+const singleAnalysisPrompt = `You are a world-class speech and communication coach. Analyze the speech from the provided audio file. The audio may contain a conversation between two or more speakers.
 
 Instructions:
-1.  Isolate and analyze ONLY the 'User's' speech.
-2.  Provide a full transcript of the entire conversation, labeling each part with 'User' or 'AI'.
-3.  For the 'User's' speech, identify any grammatical mistakes or awkward phrasing. For each mistake, provide the incorrect phrase, a suggested correction, and a brief explanation.
-4.  Rate the user on the following three dimensions ONLY, on a scale of 0 to 5 (can be decimal): 'Clarity', 'Language Proficiency', and 'Conciseness'. Do not include other dimensions like 'Pauses & Hesitation Markers'. The application will calculate the final overall score based on these dimension scores.
-5.  Separately, evaluate the user's 'Fluency / Speech Rate' as a percentage from 0 to 100 and return it in the 'fluencySpeechRatePercentage' field. A higher percentage indicates better performance.
-6.  Provide a list of the most frequently used filler words by the user and their counts.
-7.  Offer a bulleted list of 3-5 clear, actionable 'feedback' points for improvement. As part of the feedback, specifically mention the user's estimated speech rate in words-per-minute (WPM).
-8.  Return the entire analysis in the specified JSON format. Do NOT include an 'overallScore' field in your response.`;
+1.  First, provide a complete, word-for-word transcript of the entire conversation. Identify each distinct speaker and label them consistently (e.g., 'Speaker A', 'Speaker B').
+2.  Identify the primary speaker to analyze. This should be the person who speaks the most. If speaking time is equal, choose the first speaker.
+3.  In the top-level of the JSON, include a 'primarySpeakerLabel' field containing the label you assigned to the speaker you analyzed (e.g., 'Speaker A').
+4.  Perform a detailed analysis focusing ONLY on the primary speaker's speech.
+5.  For the primary speaker, identify any grammatical mistakes or awkward phrasing. For each mistake, provide the incorrect phrase, a suggested correction, and a brief explanation. These mistakes should be linked to the relevant turn in the conversation transcript.
+6.  Rate the primary speaker on the following three dimensions ONLY, on a scale of 0 to 5 (can be decimal): 'Clarity', 'Language Proficiency', and 'Conciseness'.
+7.  Separately, evaluate the primary speaker's 'Fluency / Speech Rate' as a percentage from 0 to 100 and return it in the 'fluencySpeechRatePercentage' field. A higher percentage indicates better performance.
+8.  Provide a list of the most frequently used filler words by the primary speaker and their counts.
+9.  Offer a bulleted list of 3-5 clear, actionable 'feedback' points for the primary speaker's improvement. As part of the feedback, specifically mention their estimated speech rate in words-per-minute (WPM).
+10. In the 'conversation' array of the JSON output, use the actual speaker labels you identified ('Speaker A', 'Speaker B', etc.) for the 'speaker' field for every turn.
+11. Return the entire analysis in the specified JSON format. Do NOT include an 'overallScore' field in your response.`;
 
 
 export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => {

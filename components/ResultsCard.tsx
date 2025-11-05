@@ -163,15 +163,28 @@ export const ResultsCard: React.FC<{ result: AnalysisResult, title?: string }> =
       <div className="bg-gray-800 p-4 sm:p-6 rounded-lg">
         <h3 className="text-xl font-bold text-indigo-400 mb-4">Conversation Transcript</h3>
         <div className="max-h-[500px] overflow-y-auto pr-2 sm:pr-4 space-y-6">
-            {result.conversation.map((turn, i) => (
-                <div key={i} className={`flex items-end gap-2 sm:gap-3 ${turn.speaker === 'User' ? 'justify-end' : ''}`}>
-                    {turn.speaker === 'AI' && <RobotIcon className="w-8 h-8 flex-shrink-0 bg-gray-700 text-indigo-400 p-1.5 rounded-full"/>}
-                    <div className={`w-fit max-w-[85%] sm:max-w-xl rounded-2xl px-3 sm:px-4 py-2 sm:py-3 ${turn.speaker === 'User' ? 'bg-indigo-600 rounded-br-none' : 'bg-gray-700 rounded-bl-none'}`}>
-                        <p className="text-white leading-relaxed text-sm sm:text-base"><MistakeHighlighter turn={turn} /></p>
+            {result.conversation.map((turn, i) => {
+                const isPrimarySpeaker = turn.speaker === result.primarySpeakerLabel;
+                return (
+                    <div key={i} className={`flex items-end gap-2 sm:gap-3 ${isPrimarySpeaker ? 'justify-end' : ''}`}>
+                        {!isPrimarySpeaker && (
+                            <div className="flex flex-col items-center">
+                                <RobotIcon className="w-8 h-8 flex-shrink-0 bg-gray-700 text-indigo-400 p-1.5 rounded-full"/>
+                                <span className="text-xs text-gray-400 mt-1">{turn.speaker}</span>
+                            </div>
+                        )}
+                        <div className={`w-fit max-w-[85%] sm:max-w-xl rounded-2xl px-3 sm:px-4 py-2 sm:py-3 ${isPrimarySpeaker ? 'bg-indigo-600 rounded-br-none' : 'bg-gray-700 rounded-bl-none'}`}>
+                            <p className="text-white leading-relaxed text-sm sm:text-base"><MistakeHighlighter turn={turn} /></p>
+                        </div>
+                         {isPrimarySpeaker && (
+                            <div className="flex flex-col items-center">
+                                <UserIcon className="w-8 h-8 flex-shrink-0 bg-gray-700 text-gray-300 p-1.5 rounded-full"/>
+                                <span className="text-xs text-gray-400 mt-1">{turn.speaker}</span>
+                            </div>
+                         )}
                     </div>
-                     {turn.speaker === 'User' && <UserIcon className="w-8 h-8 flex-shrink-0 bg-gray-700 text-gray-300 p-1.5 rounded-full"/>}
-                </div>
-            ))}
+                );
+            })}
         </div>
       </div>
     </div>

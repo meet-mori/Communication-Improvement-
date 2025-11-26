@@ -89,7 +89,6 @@ const MistakeHighlighter: React.FC<{ turn: ConversationTurn }> = ({ turn }) => {
 const RenderWithLinks: React.FC<{ text: string }> = ({ text }) => {
     // Regex to find markdown links: [text](url)
     const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
-    // FIX: Replaced `(string | JSX.Element)[]` with `React.ReactNode[]` to fix "Cannot find namespace 'JSX'" error.
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
     let match;
@@ -123,6 +122,19 @@ const RenderWithLinks: React.FC<{ text: string }> = ({ text }) => {
     return <>{parts.map((part, i) => <React.Fragment key={i}>{part}</React.Fragment>)}</>;
 };
 
+const formatSeconds = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = Math.round(totalSeconds % 60);
+    return `${mins}m ${secs}s`;
+}
+
+// Simple time formatter for transcript timestamps (MM:SS)
+const formatTimestamp = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
 export const ResultsCard: React.FC<{ result: AnalysisResult, title?: string }> = ({ result, title = "Analysis Report" }) => {
   const handleExport = () => {
     const htmlContent = generateHtmlReport(result);
@@ -137,6 +149,8 @@ export const ResultsCard: React.FC<{ result: AnalysisResult, title?: string }> =
     URL.revokeObjectURL(url);
   };
 
+  const { speakingTimeDistribution } = result;
+
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6 sm:space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -146,6 +160,75 @@ export const ResultsCard: React.FC<{ result: AnalysisResult, title?: string }> =
           Export Report
         </button>
       </div>
+
+       {/* Speaking Time Distribution */}
+      {speakingTimeDistribution && (
+        <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 shadow-sm">
+            <h3 className="text-xl font-bold text-indigo-400 mb-6 flex items-center gap-2">
+                <span className="w-1 h-6 bg-indigo-500 rounded-full mr-2"></span>
+                Speaking Time Analysis
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                 {/* Visual Summary */}
+                <div className="flex flex-col gap-6">
+                     {/* User Stats */}
+                    <div className="flex justify-between items-center p-4 bg-gray-900/50 rounded-xl border border-gray-700/50">
+                        <div className="flex items-center gap-3">
+                             <div className="p-2 bg-indigo-500/20 rounded-lg">
+                                <UserIcon className="w-6 h-6 text-indigo-400"/>
+                             </div>
+                             <div>
+                                 <p className="text-gray-400 text-sm font-medium">User Speaking</p>
+                                 <p className="text-2xl font-bold text-white">{formatSeconds(speakingTimeDistribution.primarySpeaker.seconds)}</p>
+                             </div>
+                        </div>
+                        <div className="text-right">
+                             <span className="text-3xl font-bold text-indigo-500">{speakingTimeDistribution.primarySpeaker.percentage}%</span>
+                        </div>
+                    </div>
+
+                    {/* AI Stats */}
+                    <div className="flex justify-between items-center p-4 bg-gray-900/50 rounded-xl border border-gray-700/50">
+                        <div className="flex items-center gap-3">
+                             <div className="p-2 bg-gray-700 rounded-lg">
+                                <RobotIcon className="w-6 h-6 text-gray-400"/>
+                             </div>
+                             <div>
+                                 <p className="text-gray-400 text-sm font-medium">AI / Other</p>
+                                 <p className="text-2xl font-bold text-white">{formatSeconds(speakingTimeDistribution.others.seconds)}</p>
+                             </div>
+                        </div>
+                        <div className="text-right">
+                             <span className="text-3xl font-bold text-gray-500">{speakingTimeDistribution.others.percentage}%</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Pie/Bar Visualization */}
+                <div className="flex flex-col justify-center h-full space-y-2">
+                    <p className="text-sm text-gray-400 mb-1">Total Audio Time Distribution</p>
+                    <div className="w-full h-8 bg-gray-700 rounded-full overflow-hidden flex relative">
+                         <div 
+                            className="h-full bg-indigo-500 flex items-center justify-center text-xs font-bold text-white transition-all duration-700" 
+                            style={{ width: `${speakingTimeDistribution.primarySpeaker.percentage}%` }}
+                        >
+                            {speakingTimeDistribution.primarySpeaker.percentage > 10 && 'User'}
+                        </div>
+                        <div 
+                            className="h-full bg-gray-600 flex items-center justify-center text-xs font-bold text-gray-300 transition-all duration-700" 
+                            style={{ width: `${speakingTimeDistribution.others.percentage}%` }}
+                        >
+                            {speakingTimeDistribution.others.percentage > 10 && 'AI'}
+                        </div>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500 mt-2">
+                         <span>Based on total file duration. Includes pauses and "floor time".</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* Dashboard */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -225,18 +308,20 @@ export const ResultsCard: React.FC<{ result: AnalysisResult, title?: string }> =
                 return (
                     <div key={i} className={`flex items-end gap-2 sm:gap-3 ${isPrimarySpeaker ? 'justify-end' : ''}`}>
                         {!isPrimarySpeaker && (
-                            <div className="flex flex-col items-center">
+                            <div className="flex flex-col items-center gap-1">
                                 <RobotIcon className="w-8 h-8 flex-shrink-0 bg-gray-700 text-indigo-400 p-1.5 rounded-full"/>
-                                <span className="text-xs text-gray-400 mt-1">{turn.speaker}</span>
+                                <span className="text-xs text-gray-400">{turn.speaker}</span>
+                                <span className="text-[10px] text-gray-500 font-mono">{formatTimestamp(turn.startTime)}</span>
                             </div>
                         )}
                         <div className={`w-fit max-w-[85%] sm:max-w-xl rounded-2xl px-3 sm:px-4 py-2 sm:py-3 ${isPrimarySpeaker ? 'bg-indigo-600 rounded-br-none' : 'bg-gray-700 rounded-bl-none'}`}>
                             <p className="text-white leading-relaxed text-sm sm:text-base"><MistakeHighlighter turn={turn} /></p>
                         </div>
                          {isPrimarySpeaker && (
-                            <div className="flex flex-col items-center">
+                            <div className="flex flex-col items-center gap-1">
                                 <UserIcon className="w-8 h-8 flex-shrink-0 bg-gray-700 text-gray-300 p-1.5 rounded-full"/>
-                                <span className="text-xs text-gray-400 mt-1">{turn.speaker}</span>
+                                <span className="text-xs text-gray-400">{turn.speaker}</span>
+                                <span className="text-[10px] text-gray-500 font-mono">{formatTimestamp(turn.startTime)}</span>
                             </div>
                          )}
                     </div>

@@ -8,6 +8,8 @@ export interface ConversationTurn {
   speaker: string; // Changed from 'User' | 'AI' to string to support 'Speaker A', etc.
   text: string;
   mistake?: Mistake;
+  startTime: number;
+  endTime: number;
 }
 
 export interface Dimension {
@@ -25,6 +27,16 @@ export interface PersonalizedSuggestion {
   suggestions: string[];
 }
 
+export interface SpeakingStats {
+  seconds: number;
+  percentage: number;
+}
+
+export interface SpeakingTimeDistribution {
+  primarySpeaker: SpeakingStats;
+  others: SpeakingStats;
+}
+
 export interface AnalysisResult {
   overallScore: number;
   dimensions: Dimension[];
@@ -33,6 +45,7 @@ export interface AnalysisResult {
   conversation: ConversationTurn[];
   fluencySpeechRatePercentage: number;
   primarySpeakerLabel: string; // Added to identify the main speaker in the transcript
+  speakingTimeDistribution: SpeakingTimeDistribution;
   personalizedSuggestions: PersonalizedSuggestion;
 }
 

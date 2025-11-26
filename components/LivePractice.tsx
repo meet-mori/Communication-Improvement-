@@ -93,19 +93,18 @@ export const LivePractice: React.FC = () => {
             let newTranscript = [...prev];
             if (message.serverContent?.inputTranscription) {
                 const text = message.serverContent.inputTranscription.text;
-                const isFinal = message.serverContent.inputTranscription.isFinal;
+                // 'isFinal' is not available on inputTranscription in the current SDK version.
                 const lastTurn = newTranscript[newTranscript.length - 1];
                 if (lastTurn?.speaker === 'User' && !lastTurn.isFinal) {
-                    lastTurn.text = text;
-                    lastTurn.isFinal = isFinal;
+                    lastTurn.text += text; // Append text chunks
                 } else {
-                    newTranscript.push({ speaker: 'User', text, isFinal });
+                    newTranscript.push({ speaker: 'User', text, isFinal: false });
                 }
             } else if (message.serverContent?.outputTranscription) {
                 const text = message.serverContent.outputTranscription.text;
                 const lastTurn = newTranscript[newTranscript.length - 1];
                 if (lastTurn?.speaker === 'AI' && !lastTurn.isFinal) {
-                    lastTurn.text = text;
+                    lastTurn.text += text; // Append text chunks
                 } else {
                     newTranscript.push({ speaker: 'AI', text, isFinal: false });
                 }
@@ -128,6 +127,7 @@ export const LivePractice: React.FC = () => {
                 outputAudioContext.currentTime
             );
             const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
+            
             const source = outputAudioContext.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(outputAudioContext.destination);
@@ -316,6 +316,7 @@ export const LivePractice: React.FC = () => {
 
     return (
         <div className="w-full max-w-2xl flex flex-col items-center space-y-4">
+            
             <div className="w-full">
                 <label htmlFor="language-select" className="block text-sm font-medium text-gray-400 mb-1">
                     Select Language
@@ -333,7 +334,7 @@ export const LivePractice: React.FC = () => {
                 </select>
             </div>
 
-            <div className="w-full h-96 bg-gray-800 border border-gray-700 rounded-lg p-4 flex flex-col">
+            <div className="w-full h-96 bg-gray-800 border border-gray-700 rounded-lg p-4 flex flex-col relative">
                 <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                     {transcript.map((turn, i) => (
                         <div key={i} className={`flex items-start gap-3 ${turn.speaker === 'User' ? 'justify-end' : ''}`}>
@@ -347,12 +348,12 @@ export const LivePractice: React.FC = () => {
                      <div ref={transcriptEndRef} />
                 </div>
                  {transcript.length === 0 && conversationState === 'idle' && (
-                     <div className="m-auto text-center text-gray-500">
+                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center text-gray-500 w-full">
                         <p className="text-lg">Ready to practice?</p>
                         <p>Click "Start Conversation" to begin.</p>
                     </div>
                 )}
-                <div className="h-8 pt-2 text-center text-gray-400">{getStatusText()}</div>
+                <div className="h-8 pt-2 text-center text-gray-400 border-t border-gray-700 mt-2">{getStatusText()}</div>
             </div>
 
             <div className="flex flex-col items-center space-y-4 h-16">

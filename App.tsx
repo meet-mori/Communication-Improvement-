@@ -28,7 +28,7 @@ const App: React.FC = () => {
     setAppState('loading');
     setError(null);
     setAnalysisResult(null);
-    setLoadingMessage('Running 3 analyses for accuracy... This may take a little longer.');
+    setLoadingMessage('Analyzing audio for accuracy... This may take a moment.');
     try {
       const result = await analyzeAudio(file);
       setAnalysisResult(result);
@@ -48,11 +48,11 @@ const App: React.FC = () => {
     setNewAnalysisResult(null);
 
     try {
-        setLoadingMessage('Analyzing older audio (3 passes for accuracy)...');
+        setLoadingMessage('Analyzing older audio...');
         const oldResult = await analyzeAudio(oldFile);
         setOldAnalysisResult(oldResult);
 
-        setLoadingMessage('Analyzing newer audio (3 passes for accuracy)...');
+        setLoadingMessage('Analyzing newer audio...');
         const newResult = await analyzeAudio(newFile);
         setNewAnalysisResult(newResult);
 

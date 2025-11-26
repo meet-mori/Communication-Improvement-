@@ -35,6 +35,20 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
+// Utility to get audio duration
+const getAudioDuration = (file: File): Promise<number> => {
+  return new Promise((resolve) => {
+    const audio = document.createElement('audio');
+    const objectUrl = URL.createObjectURL(file);
+    audio.src = objectUrl;
+    audio.onloadedmetadata = () => {
+      resolve(audio.duration);
+      URL.revokeObjectURL(objectUrl);
+    };
+    audio.onerror = () => resolve(0); 
+  });
+};
+
 const getAiClient = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
@@ -48,7 +62,7 @@ const analysisSchema = {
   properties: {
     primarySpeakerLabel: {
         type: Type.STRING,
-        description: "The label (e.g., 'Speaker A') assigned to the primary speaker who was analyzed."
+        description: "The label (e.g., 'Speaker A' or 'User') assigned to the primary speaker who was analyzed."
     },
     dimensions: {
       type: Type.ARRAY,
@@ -85,12 +99,14 @@ const analysisSchema = {
     },
     conversation: {
       type: Type.ARRAY,
-      description: "The full conversation transcript with each speaker identified.",
+      description: "The full conversation transcript with timestamps for every turn.",
       items: {
         type: Type.OBJECT,
         properties: {
-          speaker: { type: Type.STRING }, // Generic string to allow for 'Speaker A', 'Speaker B', etc.
+          speaker: { type: Type.STRING },
           text: { type: Type.STRING },
+          startTime: { type: Type.NUMBER, description: "Start time of the turn in seconds." },
+          endTime: { type: Type.NUMBER, description: "End time of the turn in seconds." },
           mistake: {
             type: Type.OBJECT,
             properties: {
@@ -101,7 +117,7 @@ const analysisSchema = {
             required: ["incorrectPhrase", "suggestion", "explanation"],
           },
         },
-        required: ["speaker", "text"],
+        required: ["speaker", "text", "startTime", "endTime"],
       },
     },
     personalizedSuggestions: {
@@ -124,35 +140,37 @@ const analysisSchema = {
   required: ["primarySpeakerLabel", "dimensions", "fluencySpeechRatePercentage", "feedback", "fillerWords", "conversation", "personalizedSuggestions"],
 };
 
-const singleAnalysisPrompt = `You are a world-class speech and communication coach. Analyze the speech from the provided audio file. The audio may contain a conversation between two or more speakers.
+const singleAnalysisPrompt = `You are a world-class speech and communication coach. Analyze the speech from the provided audio file. 
 
 Instructions:
-1.  First, provide a complete, word-for-word transcript of the entire conversation. Identify each distinct speaker and label them consistently (e.g., 'Speaker A', 'Speaker B').
-2.  Identify the primary speaker to analyze. This should be the person who speaks the most. If speaking time is equal, choose the first speaker.
-3.  In the top-level of the JSON, include a 'primarySpeakerLabel' field containing the label you assigned to the speaker you analyzed (e.g., 'Speaker A').
-4.  Perform a detailed analysis focusing ONLY on the primary speaker's speech.
-5.  For the primary speaker, identify any grammatical mistakes or awkward phrasing. For each mistake, provide the incorrect phrase, a suggested correction, and a brief explanation. These mistakes should be linked to the relevant turn in the conversation transcript.
-6.  Rate the primary speaker on the following three dimensions ONLY, on a scale of 0 to 5 (can be decimal): 'Clarity', 'Language Proficiency', and 'Conciseness'.
-7.  Separately, evaluate the primary speaker's 'Fluency / Speech Rate' as a percentage from 0 to 100 and return it in the 'fluencySpeechRatePercentage' field. A higher percentage indicates better performance.
-8.  Provide a list of the most frequently used filler words by the primary speaker and their counts.
-9.  Offer a bulleted list of 3-5 clear, actionable 'feedback' points for the primary speaker's improvement. As part of the feedback, specifically mention their estimated speech rate in words-per-minute (WPM).
-10. In the 'conversation' array of the JSON output, use the actual speaker labels you identified ('Speaker A', 'Speaker B', etc.) for the 'speaker' field for every turn.
-11. After the main analysis, identify the single most critical area for improvement for the primary speaker from their dimension scores and fluency (e.g., 'Vocabulary', 'Grammar', 'Fluency', 'Clarity', 'Conciseness').
-12. Based on this weakest area, provide a 'personalizedSuggestions' object. This object must contain an 'areaForFocus' string and a 'suggestions' array with 2-3 specific, actionable tips. For at least one tip, include a markdown link to a helpful external resource (e.g., a relevant YouTube video, an educational article, or a practice tool). Example markdown format: [Resource Title](https://example.com).
-13. Return the entire analysis in the specified JSON format. Do NOT include an 'overallScore' field in your response.`;
+1.  **Transcript & Timestamps**: Provide a complete, word-for-word transcript. **CRITICAL**: For every single turn, you MUST provide accurate 'startTime' and 'endTime' in seconds. The 'duration' (endTime - startTime) of a turn must include the entire time the speaker holds the floor, including all pauses, silence, "air", and filler sounds (like "um", "uh") within their turn. Do not trim silence inside a turn. Ensure the transcript covers the entire duration of the audio file.
+2.  **Speakers**: Identify the PRIMARY speaker (User/Student) and the SECONDARY speaker (Interviewer/AI). Label them consistently (e.g., 'Speaker A', 'Speaker B').
+3.  **Primary Speaker**: Set 'primarySpeakerLabel' to the label of the User.
+4.  **Mistakes**: Identify grammatical mistakes or awkward phrasing for the primary speaker.
+5.  **Dimensions**: Rate the primary speaker on 'Clarity', 'Language Proficiency', and 'Conciseness' (0-5 scale).
+6.  **Fluency**: Score 'Fluency / Speech Rate' (0-100%).
+7.  **Fillers**: Count filler words for the primary speaker.
+8.  **Feedback**: Provide 3-5 actionable feedback points.
+9.  **Coaching**: Provide a 'personalizedSuggestions' object with a focus area and linked resources.
+
+Return the result in the specified JSON format.`;
 
 
 export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => {
-  const base64Audio = await fileToBase64(audioFile);
+  const [base64Audio, audioDuration] = await Promise.all([
+    fileToBase64(audioFile),
+    getAudioDuration(audioFile)
+  ]);
   
   try {
     const ai = getAiClient();
     const audioPart = { inlineData: { mimeType: audioFile.type, data: base64Audio } };
     const textPart = { text: singleAnalysisPrompt };
 
-    const analysisPromises = Array(3).fill(null).map(() => 
+    // 2 passes for accuracy
+    const analysisPromises = Array(2).fill(null).map(() => 
       ai.models.generateContent({
-          model: 'gemini-2.5-pro',
+          model: 'gemini-2.5-flash',
           contents: { parts: [textPart, audioPart] },
           config: { 
               responseMimeType: "application/json", 
@@ -163,14 +181,14 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
     );
     
     const responses = await Promise.all(analysisPromises);
-    const results: Omit<AnalysisResult, 'overallScore'>[] = responses.map(res => JSON.parse(res.text.trim()));
+    const rawResults = responses.map(res => JSON.parse(res.text.trim()));
 
     // Averaging logic
     const dimensionSums: { [key: string]: number } = {};
     let fluencySum = 0;
     const dimensionCounts: { [key: string]: number } = {};
 
-    for (const result of results) {
+    for (const result of rawResults) {
         for (const dim of result.dimensions) {
             dimensionSums[dim.name] = (dimensionSums[dim.name] || 0) + dim.score;
             dimensionCounts[dim.name] = (dimensionCounts[dim.name] || 0) + 1;
@@ -183,12 +201,46 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
         score: parseFloat((dimensionSums[name] / (dimensionCounts[name] || 1)).toFixed(2)),
     }));
 
-    const averagedFluency = Math.round(fluencySum / results.length);
+    const averagedFluency = Math.round(fluencySum / rawResults.length);
     
-    // Take qualitative data from the first result for consistency
-    const representativeResult = results[0];
+    // Take qualitative data from the first result
+    const representativeResult = rawResults[0];
 
-    // Deterministically calculate the overallScore from the *averaged* core dimensions
+    // --- MANUAL TIME CALCULATION FOR PRECISION ---
+    // Instead of asking AI to sum it up (which it often gets wrong), we calculate it from the timestamps.
+    const conversation = representativeResult.conversation;
+    let primarySeconds = 0;
+    let otherSeconds = 0;
+    const primaryLabel = representativeResult.primarySpeakerLabel;
+
+    conversation.forEach((turn: any) => {
+        const duration = Math.max(0, turn.endTime - turn.startTime);
+        if (turn.speaker === primaryLabel) {
+            primarySeconds += duration;
+        } else {
+            otherSeconds += duration;
+        }
+    });
+
+    // Use the actual file duration for percentage calculation to represent "share of total time"
+    // If the sum of spoken time is less than file duration, the remainder is dead air (or untranscribed).
+    // If sum is greater (overlaps), we just use the raw sum.
+    const totalSpoken = primarySeconds + otherSeconds;
+    const basisDuration = Math.max(audioDuration, totalSpoken) || 1; // Prevent div by zero
+
+    const speakingTimeDistribution = {
+        primarySpeaker: {
+            seconds: primarySeconds,
+            percentage: Math.round((primarySeconds / basisDuration) * 100)
+        },
+        others: {
+            seconds: otherSeconds,
+            percentage: Math.round((otherSeconds / basisDuration) * 100)
+        }
+    };
+    // ---------------------------------------------
+
+    // Deterministically calculate the overallScore
     const coreDimensionScores = averagedDimensions
         .filter(d => ['Clarity', 'Language Proficiency', 'Conciseness'].includes(d.name))
         .map(d => d.score);
@@ -203,7 +255,8 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
         ...representativeResult,
         dimensions: averagedDimensions,
         fluencySpeechRatePercentage: averagedFluency,
-        overallScore
+        overallScore,
+        speakingTimeDistribution // Inject the calculated distribution
     };
 
     return finalResult;
@@ -263,7 +316,7 @@ export const generateComparisonReport = async (oldAnalysis: AnalysisResult, newA
     const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-2.5-flash',
             contents: {
                 parts: [
                     { text: comparisonPrompt },

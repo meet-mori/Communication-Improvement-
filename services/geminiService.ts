@@ -10,7 +10,7 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// Helper function to handle retries for overloaded models (503) or rate limits (429)
+// Helper function to handle retries for overloaded models (503), rate limits (429), or internal errors (500)
 const generateContentWithRetry = async (model: string, params: any, retries = 3) => {
   const ai = getAiClient();
   for (let i = 0; i < retries; i++) {
@@ -20,14 +20,15 @@ const generateContentWithRetry = async (model: string, params: any, retries = 3)
         ...params
       });
     } catch (error: any) {
-      // Check for 503 (Service Unavailable/Overloaded) or 429 (Too Many Requests)
+      // Check for 503 (Service Unavailable/Overloaded), 429 (Too Many Requests), or 500 (Internal Error)
       const isOverloaded = error.status === 503 || error.code === 503 || error.message?.includes('503');
       const isRateLimited = error.status === 429 || error.code === 429 || error.message?.includes('429');
+      const isInternalError = error.status === 500 || error.code === 500;
 
-      if ((isOverloaded || isRateLimited) && i < retries - 1) {
+      if ((isOverloaded || isRateLimited || isInternalError) && i < retries - 1) {
         // Exponential backoff: 1s, 2s, 4s
         const delay = Math.pow(2, i) * 1000;
-        console.warn(`Gemini model ${model} overloaded or rate limited. Retrying in ${delay}ms (Attempt ${i + 1}/${retries})...`);
+        console.warn(`Gemini model ${model} error (${error.status || error.code}). Retrying in ${delay}ms (Attempt ${i + 1}/${retries})...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -36,9 +37,12 @@ const generateContentWithRetry = async (model: string, params: any, retries = 3)
   }
 };
 
+// Switched to gemini-2.5-flash for better availability and speed
+const MODEL_NAME = 'gemini-2.5-flash';
+
 export const getPracticePrompt = async (): Promise<string> => {
     try {
-        const response = await generateContentWithRetry('gemini-3-pro-preview', {
+        const response = await generateContentWithRetry(MODEL_NAME, {
             contents: 'Generate a short, engaging, and random prompt for a user to practice their public speaking and communication skills. The prompt should be a single sentence or question. For example: "Describe your dream vacation." or "Explain a complex topic you are passionate about in simple terms."',
             config: {
                 temperature: 0.9,
@@ -64,7 +68,7 @@ export const getDailyTopics = async (): Promise<string[]> => {
     4. Return ONLY a JSON array of strings.`;
 
     try {
-        const response = await generateContentWithRetry('gemini-3-pro-preview', {
+        const response = await generateContentWithRetry(MODEL_NAME, {
              contents: prompt,
              config: {
                  responseMimeType: "application/json",
@@ -229,9 +233,8 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
     const audioPart = { inlineData: { mimeType: audioFile.type, data: base64Audio } };
     const textPart = { text: singleAnalysisPrompt };
 
-    // Optimized: Use Gemini 3 Pro with a single pass for better reasoning and less load
-    // Using generateContentWithRetry to handle 503s
-    const response = await generateContentWithRetry('gemini-3-pro-preview', {
+    // Using gemini-2.5-flash with retry logic for production stability
+    const response = await generateContentWithRetry(MODEL_NAME, {
         contents: { parts: [textPart, audioPart] },
         config: { 
             responseMimeType: "application/json", 
@@ -365,7 +368,7 @@ Instructions:
 
 export const generateComparisonReport = async (oldAnalysis: AnalysisResult, newAnalysis: AnalysisResult): Promise<ComparisonResult> => {
     try {
-        const response = await generateContentWithRetry('gemini-3-pro-preview', {
+        const response = await generateContentWithRetry(MODEL_NAME, {
             contents: {
                 parts: [
                     { text: comparisonPrompt },

@@ -2,11 +2,43 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, ComparisonResult, Dimension } from '../types';
 
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY environment variable not set");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
+// Helper function to handle retries for overloaded models (503) or rate limits (429)
+const generateContentWithRetry = async (model: string, params: any, retries = 3) => {
+  const ai = getAiClient();
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await ai.models.generateContent({
+        model,
+        ...params
+      });
+    } catch (error: any) {
+      // Check for 503 (Service Unavailable/Overloaded) or 429 (Too Many Requests)
+      const isOverloaded = error.status === 503 || error.code === 503 || error.message?.includes('503');
+      const isRateLimited = error.status === 429 || error.code === 429 || error.message?.includes('429');
+
+      if ((isOverloaded || isRateLimited) && i < retries - 1) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, i) * 1000;
+        console.warn(`Gemini model ${model} overloaded or rate limited. Retrying in ${delay}ms (Attempt ${i + 1}/${retries})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+};
+
 export const getPracticePrompt = async (): Promise<string> => {
     try {
-        const ai = getAiClient();
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateContentWithRetry('gemini-3-pro-preview', {
             contents: 'Generate a short, engaging, and random prompt for a user to practice their public speaking and communication skills. The prompt should be a single sentence or question. For example: "Describe your dream vacation." or "Explain a complex topic you are passionate about in simple terms."',
             config: {
                 temperature: 0.9,
@@ -14,7 +46,7 @@ export const getPracticePrompt = async (): Promise<string> => {
             }
         });
         // Clean up the response, removing potential quotes or extra text
-        return response.text.trim().replace(/^"|"$/g, '');
+        return response?.text?.trim().replace(/^"|"$/g, '') || "Describe something you are passionate about.";
     } catch (error) {
         console.error("Error fetching practice prompt:", error);
         // Return a fallback prompt
@@ -23,7 +55,6 @@ export const getPracticePrompt = async (): Promise<string> => {
 };
 
 export const getDailyTopics = async (): Promise<string[]> => {
-    const ai = getAiClient();
     const date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const prompt = `Generate 10 unique, engaging conversation topics for today, ${date}.
     Criteria:
@@ -33,8 +64,7 @@ export const getDailyTopics = async (): Promise<string[]> => {
     4. Return ONLY a JSON array of strings.`;
 
     try {
-        const response = await ai.models.generateContent({
-             model: 'gemini-2.5-flash',
+        const response = await generateContentWithRetry('gemini-3-pro-preview', {
              contents: prompt,
              config: {
                  responseMimeType: "application/json",
@@ -44,7 +74,7 @@ export const getDailyTopics = async (): Promise<string[]> => {
                  }
              }
         });
-        return JSON.parse(response.text.trim());
+        return JSON.parse(response?.text?.trim() || "[]");
     } catch (e) {
         console.error("Error fetching daily topics:", e);
         return [
@@ -88,14 +118,6 @@ const getAudioDuration = (file: File): Promise<number> => {
     };
     audio.onerror = () => resolve(0); 
   });
-};
-
-const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API_KEY environment variable not set");
-  }
-  return new GoogleGenAI({ apiKey });
 };
 
 const analysisSchema = {
@@ -204,55 +226,34 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
   ]);
   
   try {
-    const ai = getAiClient();
     const audioPart = { inlineData: { mimeType: audioFile.type, data: base64Audio } };
     const textPart = { text: singleAnalysisPrompt };
 
-    // 2 passes for accuracy
-    const analysisPromises = Array(2).fill(null).map(() => 
-      ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: { parts: [textPart, audioPart] },
-          config: { 
-              responseMimeType: "application/json", 
-              responseSchema: analysisSchema,
-              temperature : 0.1
-          }
-      })
-    );
-    
-    const responses = await Promise.all(analysisPromises);
-    const rawResults = responses.map(res => JSON.parse(res.text.trim()));
-
-    // Averaging logic
-    const dimensionSums: { [key: string]: number } = {};
-    let fluencySum = 0;
-    const dimensionCounts: { [key: string]: number } = {};
-
-    for (const result of rawResults) {
-        for (const dim of result.dimensions) {
-            dimensionSums[dim.name] = (dimensionSums[dim.name] || 0) + dim.score;
-            dimensionCounts[dim.name] = (dimensionCounts[dim.name] || 0) + 1;
+    // Optimized: Use Gemini 3 Pro with a single pass for better reasoning and less load
+    // Using generateContentWithRetry to handle 503s
+    const response = await generateContentWithRetry('gemini-3-pro-preview', {
+        contents: { parts: [textPart, audioPart] },
+        config: { 
+            responseMimeType: "application/json", 
+            responseSchema: analysisSchema,
+            temperature : 0.1
         }
-        fluencySum += result.fluencySpeechRatePercentage;
-    }
-
-    const averagedDimensions: Dimension[] = Object.keys(dimensionSums).map(name => ({
-        name,
-        score: parseFloat((dimensionSums[name] / (dimensionCounts[name] || 1)).toFixed(2)),
-    }));
-
-    const averagedFluency = Math.round(fluencySum / rawResults.length);
+    });
     
-    // Take qualitative data from the first result
-    const representativeResult = rawResults[0];
+    // We are using single pass now, so result is just the parsed response
+    const result = JSON.parse(response?.text?.trim() || "{}");
+
+    // Standardize dimensions structure in case AI returns slightly different order
+    const processedDimensions = result.dimensions || [];
+    
+    const processedFluency = result.fluencySpeechRatePercentage || 0;
 
     // --- MANUAL TIME CALCULATION FOR PRECISION ---
     // Instead of asking AI to sum it up (which it often gets wrong), we calculate it from the timestamps.
-    const conversation = representativeResult.conversation;
+    const conversation = result.conversation || [];
     let primarySeconds = 0;
     let otherSeconds = 0;
-    const primaryLabel = representativeResult.primarySpeakerLabel;
+    const primaryLabel = result.primarySpeakerLabel;
 
     conversation.forEach((turn: any) => {
         // Sanity check: ensure start < end
@@ -268,7 +269,6 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
     // Normalization Logic:
     // If the sum of speaking times exceeds the actual file duration (impossible physics due to AI hallucination or overlap),
     // we scale them down proportionally to fit the file duration exactly.
-    // This fixes the bug where total time > file duration.
     if (audioDuration > 0 && totalSpoken > audioDuration) {
         const scaleFactor = audioDuration / totalSpoken;
         primarySeconds *= scaleFactor;
@@ -277,7 +277,6 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
     }
     
     // Recalculate percentages based on the possibly normalized values relative to total audio duration
-    // We use audioDuration as the denominator.
     const basisDuration = audioDuration || 1; 
 
     const speakingTimeDistribution = {
@@ -293,20 +292,20 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
     // ---------------------------------------------
 
     // Deterministically calculate the overallScore
-    const coreDimensionScores = averagedDimensions
-        .filter(d => ['Clarity', 'Language Proficiency', 'Conciseness'].includes(d.name))
-        .map(d => d.score);
+    const coreDimensionScores = processedDimensions
+        .filter((d: any) => ['Clarity', 'Language Proficiency', 'Conciseness'].includes(d.name))
+        .map((d: any) => d.score);
     
     let overallScore = 0;
     if (coreDimensionScores.length > 0) {
-        const totalScore = coreDimensionScores.reduce((sum, score) => sum + score, 0);
+        const totalScore = coreDimensionScores.reduce((sum: number, score: number) => sum + score, 0);
         overallScore = parseFloat((totalScore / coreDimensionScores.length).toFixed(2));
     }
 
     const finalResult: AnalysisResult = {
-        ...representativeResult,
-        dimensions: averagedDimensions,
-        fluencySpeechRatePercentage: averagedFluency,
+        ...result,
+        dimensions: processedDimensions,
+        fluencySpeechRatePercentage: processedFluency,
         overallScore,
         speakingTimeDistribution // Inject the calculated distribution
     };
@@ -315,7 +314,7 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
 
   } catch (error) {
     console.error("Error analyzing audio with Gemini:", error);
-    throw new Error("Failed to analyze audio. The model may have had trouble with the file.");
+    throw new Error("Failed to analyze audio. The AI model is currently experiencing high traffic. Please try again in a few moments.");
   }
 };
 
@@ -365,10 +364,8 @@ Instructions:
 5.  Return the entire comparison in the specified JSON format. The 'dimensionChanges' should reflect the 'oldScore' and 'newScore' for the 0-5 rated dimensions. The 'fluencyChange' object should contain the 'oldPercentage' and 'newPercentage'.`;
 
 export const generateComparisonReport = async (oldAnalysis: AnalysisResult, newAnalysis: AnalysisResult): Promise<ComparisonResult> => {
-    const ai = getAiClient();
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateContentWithRetry('gemini-3-pro-preview', {
             contents: {
                 parts: [
                     { text: comparisonPrompt },
@@ -383,7 +380,7 @@ export const generateComparisonReport = async (oldAnalysis: AnalysisResult, newA
                 responseSchema: comparisonSchema,
             }
         });
-        return JSON.parse(response.text.trim());
+        return JSON.parse(response?.text?.trim() || "{}");
     } catch (error) {
         console.error("Error generating comparison with Gemini:", error);
         throw new Error("Failed to compare analyses. Please try again.");

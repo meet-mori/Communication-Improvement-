@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, ComparisonResult, Dimension } from '../types';
 
@@ -18,6 +19,46 @@ export const getPracticePrompt = async (): Promise<string> => {
         console.error("Error fetching practice prompt:", error);
         // Return a fallback prompt
         return "Describe something you are passionate about.";
+    }
+};
+
+export const getDailyTopics = async (): Promise<string[]> => {
+    const ai = getAiClient();
+    const date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const prompt = `Generate 10 unique, engaging conversation topics for today, ${date}.
+    Criteria:
+    1. Topics must be about Current Events, Politics, Sports, Social Issues, or Philosophy.
+    2. STRICTLY NO Technology, Coding, or AI topics.
+    3. Topics should be open-ended and suitable for debate or discussion.
+    4. Return ONLY a JSON array of strings.`;
+
+    try {
+        const response = await ai.models.generateContent({
+             model: 'gemini-2.5-flash',
+             contents: prompt,
+             config: {
+                 responseMimeType: "application/json",
+                 responseSchema: {
+                     type: Type.ARRAY,
+                     items: { type: Type.STRING }
+                 }
+             }
+        });
+        return JSON.parse(response.text.trim());
+    } catch (e) {
+        console.error("Error fetching daily topics:", e);
+        return [
+            "The impact of globalization on local cultures",
+            "Should voting be mandatory?",
+            "The role of sports in modern society",
+            "Universal Basic Income: Pros and Cons",
+            "Climate change mitigation strategies",
+            "The future of traditional education",
+            "Mental health awareness in the workplace",
+            "The ethics of space exploration",
+            "Is true privacy possible anymore?",
+            "The influence of pop culture on youth"
+        ];
     }
 };
 
@@ -143,7 +184,7 @@ const analysisSchema = {
 const singleAnalysisPrompt = `You are a world-class speech and communication coach. Analyze the speech from the provided audio file. 
 
 Instructions:
-1.  **Transcript & Timestamps**: Provide a complete, word-for-word transcript. **CRITICAL**: For every single turn, you MUST provide accurate 'startTime' and 'endTime' in seconds. The 'duration' (endTime - startTime) of a turn must include the entire time the speaker holds the floor, including all pauses, silence, "air", and filler sounds (like "um", "uh") within their turn. Do not trim silence inside a turn. Ensure the transcript covers the entire duration of the audio file.
+1.  **Transcript & Timestamps**: Provide a complete, word-for-word transcript. **CRITICAL**: For every single turn, you MUST provide accurate 'startTime' and 'endTime' in seconds. The 'duration' (endTime - startTime) of a turn must include the entire time the speaker holds the floor, including all pauses, silence, "air", and filler sounds (like "um", "uh") within their turn. Do not trim silence inside a turn. Ensure the transcript covers the entire duration of the audio file. **Do not generate timestamps that exceed the audio file's duration.**
 2.  **Speakers**: Identify the PRIMARY speaker (User/Student) and the SECONDARY speaker (Interviewer/AI). Label them consistently (e.g., 'Speaker A', 'Speaker B').
 3.  **Primary Speaker**: Set 'primarySpeakerLabel' to the label of the User.
 4.  **Mistakes**: Identify grammatical mistakes or awkward phrasing for the primary speaker.
@@ -214,6 +255,7 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
     const primaryLabel = representativeResult.primarySpeakerLabel;
 
     conversation.forEach((turn: any) => {
+        // Sanity check: ensure start < end
         const duration = Math.max(0, turn.endTime - turn.startTime);
         if (turn.speaker === primaryLabel) {
             primarySeconds += duration;
@@ -222,20 +264,30 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
         }
     });
 
-    // Use the actual file duration for percentage calculation to represent "share of total time"
-    // If the sum of spoken time is less than file duration, the remainder is dead air (or untranscribed).
-    // If sum is greater (overlaps), we just use the raw sum.
-    const totalSpoken = primarySeconds + otherSeconds;
-    const basisDuration = Math.max(audioDuration, totalSpoken) || 1; // Prevent div by zero
+    let totalSpoken = primarySeconds + otherSeconds;
+    // Normalization Logic:
+    // If the sum of speaking times exceeds the actual file duration (impossible physics due to AI hallucination or overlap),
+    // we scale them down proportionally to fit the file duration exactly.
+    // This fixes the bug where total time > file duration.
+    if (audioDuration > 0 && totalSpoken > audioDuration) {
+        const scaleFactor = audioDuration / totalSpoken;
+        primarySeconds *= scaleFactor;
+        otherSeconds *= scaleFactor;
+        totalSpoken = audioDuration; // Conceptually clamped
+    }
+    
+    // Recalculate percentages based on the possibly normalized values relative to total audio duration
+    // We use audioDuration as the denominator.
+    const basisDuration = audioDuration || 1; 
 
     const speakingTimeDistribution = {
         primarySpeaker: {
             seconds: primarySeconds,
-            percentage: Math.round((primarySeconds / basisDuration) * 100)
+            percentage: Math.min(100, Math.round((primarySeconds / basisDuration) * 100))
         },
         others: {
             seconds: otherSeconds,
-            percentage: Math.round((otherSeconds / basisDuration) * 100)
+            percentage: Math.min(100, Math.round((otherSeconds / basisDuration) * 100))
         }
     };
     // ---------------------------------------------

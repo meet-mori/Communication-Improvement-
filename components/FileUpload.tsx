@@ -45,38 +45,23 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, disabled }
   }, [disabled, onFileSelect]);
 
   return (
-    <div className="w-full max-w-xl">
+    <div className="w-full max-w-md">
       <label
         htmlFor={uniqueId}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        className={`
-            group flex flex-col items-center justify-center w-full h-72 px-4 transition-all duration-300 
-            bg-slate-900/40 backdrop-blur-sm border-2 border-dashed rounded-2xl appearance-none cursor-pointer 
-            ${isDragging 
-                ? 'border-violet-400 bg-violet-500/10 scale-[1.02]' 
-                : 'border-slate-700 hover:border-violet-500/50 hover:bg-slate-800/60'}
-            focus:outline-none
-        `}
+        className={`flex justify-center w-full h-64 px-4 transition bg-gray-800 border-2 ${isDragging ? 'border-indigo-400' : 'border-gray-600'} border-dashed rounded-md appearance-none cursor-pointer hover:border-gray-400 focus:outline-none`}
       >
-        <div className="flex flex-col items-center justify-center space-y-4">
-          <div className={`
-                p-4 rounded-full transition-all duration-300
-                ${isDragging ? 'bg-violet-500/20 text-violet-400' : 'bg-slate-800 text-slate-400 group-hover:bg-violet-500/20 group-hover:text-violet-300 group-hover:scale-110'}
-          `}>
-             <UploadCloudIcon className="w-10 h-10" />
-          </div>
-          <div className="text-center">
-            <span className="block font-semibold text-lg text-slate-200 mb-1">
-                Click to upload or drag & drop
-            </span>
-            <span className="block text-sm text-slate-400 group-hover:text-slate-300 transition-colors">
-                Supports MP3, WAV, M4A
-            </span>
-          </div>
-        </div>
+        <span className="flex flex-col items-center justify-center space-x-2">
+          <UploadCloudIcon className={`w-16 h-16 ${isDragging ? 'text-indigo-400' : 'text-gray-500'}`} />
+          <span className="font-medium text-gray-400">
+            Drop your audio file here, or{' '}
+            <span className="text-indigo-400 underline">browse</span>
+          </span>
+          <span className="text-sm text-gray-500">Supports MP3, WAV, M4A, etc.</span>
+        </span>
         <input
           id={uniqueId}
           type="file"

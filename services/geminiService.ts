@@ -1,48 +1,11 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, ComparisonResult, Dimension } from '../types';
 
-const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API_KEY environment variable not set");
-  }
-  return new GoogleGenAI({ apiKey });
-};
-
-// Helper function to handle retries for overloaded models (503), rate limits (429), or internal errors (500)
-const generateContentWithRetry = async (model: string, params: any, retries = 3) => {
-  const ai = getAiClient();
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await ai.models.generateContent({
-        model,
-        ...params
-      });
-    } catch (error: any) {
-      // Check for 503 (Service Unavailable/Overloaded), 429 (Too Many Requests), or 500 (Internal Error)
-      const isOverloaded = error.status === 503 || error.code === 503 || error.message?.includes('503');
-      const isRateLimited = error.status === 429 || error.code === 429 || error.message?.includes('429');
-      const isInternalError = error.status === 500 || error.code === 500;
-
-      if ((isOverloaded || isRateLimited || isInternalError) && i < retries - 1) {
-        // Exponential backoff: 1s, 2s, 4s
-        const delay = Math.pow(2, i) * 1000;
-        console.warn(`Gemini model ${model} error (${error.status || error.code}). Retrying in ${delay}ms (Attempt ${i + 1}/${retries})...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-      throw error;
-    }
-  }
-};
-
-// Switched to gemini-2.5-flash for better availability and speed
-const MODEL_NAME = 'gemini-2.5-flash';
-
 export const getPracticePrompt = async (): Promise<string> => {
     try {
-        const response = await generateContentWithRetry(MODEL_NAME, {
+        const ai = getAiClient();
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
             contents: 'Generate a short, engaging, and random prompt for a user to practice their public speaking and communication skills. The prompt should be a single sentence or question. For example: "Describe your dream vacation." or "Explain a complex topic you are passionate about in simple terms."',
             config: {
                 temperature: 0.9,
@@ -50,49 +13,11 @@ export const getPracticePrompt = async (): Promise<string> => {
             }
         });
         // Clean up the response, removing potential quotes or extra text
-        return response?.text?.trim().replace(/^"|"$/g, '') || "Describe something you are passionate about.";
+        return response.text.trim().replace(/^"|"$/g, '');
     } catch (error) {
         console.error("Error fetching practice prompt:", error);
         // Return a fallback prompt
         return "Describe something you are passionate about.";
-    }
-};
-
-export const getDailyTopics = async (): Promise<string[]> => {
-    const date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    const prompt = `Generate 10 unique, engaging conversation topics for today, ${date}.
-    Criteria:
-    1. Topics must be about Current Events, Politics, Sports, Social Issues, or Philosophy.
-    2. STRICTLY NO Technology, Coding, or AI topics.
-    3. Topics should be open-ended and suitable for debate or discussion.
-    4. Return ONLY a JSON array of strings.`;
-
-    try {
-        const response = await generateContentWithRetry(MODEL_NAME, {
-             contents: prompt,
-             config: {
-                 responseMimeType: "application/json",
-                 responseSchema: {
-                     type: Type.ARRAY,
-                     items: { type: Type.STRING }
-                 }
-             }
-        });
-        return JSON.parse(response?.text?.trim() || "[]");
-    } catch (e) {
-        console.error("Error fetching daily topics:", e);
-        return [
-            "The impact of globalization on local cultures",
-            "Should voting be mandatory?",
-            "The role of sports in modern society",
-            "Universal Basic Income: Pros and Cons",
-            "Climate change mitigation strategies",
-            "The future of traditional education",
-            "Mental health awareness in the workplace",
-            "The ethics of space exploration",
-            "Is true privacy possible anymore?",
-            "The influence of pop culture on youth"
-        ];
     }
 };
 
@@ -122,6 +47,14 @@ const getAudioDuration = (file: File): Promise<number> => {
     };
     audio.onerror = () => resolve(0); 
   });
+};
+
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY environment variable not set");
+  }
+  return new GoogleGenAI({ apiKey });
 };
 
 const analysisSchema = {
@@ -210,7 +143,7 @@ const analysisSchema = {
 const singleAnalysisPrompt = `You are a world-class speech and communication coach. Analyze the speech from the provided audio file. 
 
 Instructions:
-1.  **Transcript & Timestamps**: Provide a complete, word-for-word transcript. **CRITICAL**: For every single turn, you MUST provide accurate 'startTime' and 'endTime' in seconds. The 'duration' (endTime - startTime) of a turn must include the entire time the speaker holds the floor, including all pauses, silence, "air", and filler sounds (like "um", "uh") within their turn. Do not trim silence inside a turn. Ensure the transcript covers the entire duration of the audio file. **Do not generate timestamps that exceed the audio file's duration.**
+1.  **Transcript & Timestamps**: Provide a complete, word-for-word transcript. **CRITICAL**: For every single turn, you MUST provide accurate 'startTime' and 'endTime' in seconds. The 'duration' (endTime - startTime) of a turn must include the entire time the speaker holds the floor, including all pauses, silence, "air", and filler sounds (like "um", "uh") within their turn. Do not trim silence inside a turn. Ensure the transcript covers the entire duration of the audio file.
 2.  **Speakers**: Identify the PRIMARY speaker (User/Student) and the SECONDARY speaker (Interviewer/AI). Label them consistently (e.g., 'Speaker A', 'Speaker B').
 3.  **Primary Speaker**: Set 'primarySpeakerLabel' to the label of the User.
 4.  **Mistakes**: Identify grammatical mistakes or awkward phrasing for the primary speaker.
@@ -230,36 +163,57 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
   ]);
   
   try {
+    const ai = getAiClient();
     const audioPart = { inlineData: { mimeType: audioFile.type, data: base64Audio } };
     const textPart = { text: singleAnalysisPrompt };
 
-    // Using gemini-2.5-flash with retry logic for production stability
-    const response = await generateContentWithRetry(MODEL_NAME, {
-        contents: { parts: [textPart, audioPart] },
-        config: { 
-            responseMimeType: "application/json", 
-            responseSchema: analysisSchema,
-            temperature : 0.1
-        }
-    });
+    // 2 passes for accuracy
+    const analysisPromises = Array(2).fill(null).map(() => 
+      ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: { parts: [textPart, audioPart] },
+          config: { 
+              responseMimeType: "application/json", 
+              responseSchema: analysisSchema,
+              temperature : 0.1
+          }
+      })
+    );
     
-    // We are using single pass now, so result is just the parsed response
-    const result = JSON.parse(response?.text?.trim() || "{}");
+    const responses = await Promise.all(analysisPromises);
+    const rawResults = responses.map(res => JSON.parse(res.text.trim()));
 
-    // Standardize dimensions structure in case AI returns slightly different order
-    const processedDimensions = result.dimensions || [];
+    // Averaging logic
+    const dimensionSums: { [key: string]: number } = {};
+    let fluencySum = 0;
+    const dimensionCounts: { [key: string]: number } = {};
+
+    for (const result of rawResults) {
+        for (const dim of result.dimensions) {
+            dimensionSums[dim.name] = (dimensionSums[dim.name] || 0) + dim.score;
+            dimensionCounts[dim.name] = (dimensionCounts[dim.name] || 0) + 1;
+        }
+        fluencySum += result.fluencySpeechRatePercentage;
+    }
+
+    const averagedDimensions: Dimension[] = Object.keys(dimensionSums).map(name => ({
+        name,
+        score: parseFloat((dimensionSums[name] / (dimensionCounts[name] || 1)).toFixed(2)),
+    }));
+
+    const averagedFluency = Math.round(fluencySum / rawResults.length);
     
-    const processedFluency = result.fluencySpeechRatePercentage || 0;
+    // Take qualitative data from the first result
+    const representativeResult = rawResults[0];
 
     // --- MANUAL TIME CALCULATION FOR PRECISION ---
     // Instead of asking AI to sum it up (which it often gets wrong), we calculate it from the timestamps.
-    const conversation = result.conversation || [];
+    const conversation = representativeResult.conversation;
     let primarySeconds = 0;
     let otherSeconds = 0;
-    const primaryLabel = result.primarySpeakerLabel;
+    const primaryLabel = representativeResult.primarySpeakerLabel;
 
     conversation.forEach((turn: any) => {
-        // Sanity check: ensure start < end
         const duration = Math.max(0, turn.endTime - turn.startTime);
         if (turn.speaker === primaryLabel) {
             primarySeconds += duration;
@@ -268,47 +222,39 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
         }
     });
 
-    let totalSpoken = primarySeconds + otherSeconds;
-    // Normalization Logic:
-    // If the sum of speaking times exceeds the actual file duration (impossible physics due to AI hallucination or overlap),
-    // we scale them down proportionally to fit the file duration exactly.
-    if (audioDuration > 0 && totalSpoken > audioDuration) {
-        const scaleFactor = audioDuration / totalSpoken;
-        primarySeconds *= scaleFactor;
-        otherSeconds *= scaleFactor;
-        totalSpoken = audioDuration; // Conceptually clamped
-    }
-    
-    // Recalculate percentages based on the possibly normalized values relative to total audio duration
-    const basisDuration = audioDuration || 1; 
+    // Use the actual file duration for percentage calculation to represent "share of total time"
+    // If the sum of spoken time is less than file duration, the remainder is dead air (or untranscribed).
+    // If sum is greater (overlaps), we just use the raw sum.
+    const totalSpoken = primarySeconds + otherSeconds;
+    const basisDuration = Math.max(audioDuration, totalSpoken) || 1; // Prevent div by zero
 
     const speakingTimeDistribution = {
         primarySpeaker: {
             seconds: primarySeconds,
-            percentage: Math.min(100, Math.round((primarySeconds / basisDuration) * 100))
+            percentage: Math.round((primarySeconds / basisDuration) * 100)
         },
         others: {
             seconds: otherSeconds,
-            percentage: Math.min(100, Math.round((otherSeconds / basisDuration) * 100))
+            percentage: Math.round((otherSeconds / basisDuration) * 100)
         }
     };
     // ---------------------------------------------
 
     // Deterministically calculate the overallScore
-    const coreDimensionScores = processedDimensions
-        .filter((d: any) => ['Clarity', 'Language Proficiency', 'Conciseness'].includes(d.name))
-        .map((d: any) => d.score);
+    const coreDimensionScores = averagedDimensions
+        .filter(d => ['Clarity', 'Language Proficiency', 'Conciseness'].includes(d.name))
+        .map(d => d.score);
     
     let overallScore = 0;
     if (coreDimensionScores.length > 0) {
-        const totalScore = coreDimensionScores.reduce((sum: number, score: number) => sum + score, 0);
+        const totalScore = coreDimensionScores.reduce((sum, score) => sum + score, 0);
         overallScore = parseFloat((totalScore / coreDimensionScores.length).toFixed(2));
     }
 
     const finalResult: AnalysisResult = {
-        ...result,
-        dimensions: processedDimensions,
-        fluencySpeechRatePercentage: processedFluency,
+        ...representativeResult,
+        dimensions: averagedDimensions,
+        fluencySpeechRatePercentage: averagedFluency,
         overallScore,
         speakingTimeDistribution // Inject the calculated distribution
     };
@@ -317,7 +263,7 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
 
   } catch (error) {
     console.error("Error analyzing audio with Gemini:", error);
-    throw new Error("Failed to analyze audio. The AI model is currently experiencing high traffic. Please try again in a few moments.");
+    throw new Error("Failed to analyze audio. The model may have had trouble with the file.");
   }
 };
 
@@ -367,8 +313,10 @@ Instructions:
 5.  Return the entire comparison in the specified JSON format. The 'dimensionChanges' should reflect the 'oldScore' and 'newScore' for the 0-5 rated dimensions. The 'fluencyChange' object should contain the 'oldPercentage' and 'newPercentage'.`;
 
 export const generateComparisonReport = async (oldAnalysis: AnalysisResult, newAnalysis: AnalysisResult): Promise<ComparisonResult> => {
+    const ai = getAiClient();
     try {
-        const response = await generateContentWithRetry(MODEL_NAME, {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
             contents: {
                 parts: [
                     { text: comparisonPrompt },
@@ -383,7 +331,7 @@ export const generateComparisonReport = async (oldAnalysis: AnalysisResult, newA
                 responseSchema: comparisonSchema,
             }
         });
-        return JSON.parse(response?.text?.trim() || "{}");
+        return JSON.parse(response.text.trim());
     } catch (error) {
         console.error("Error generating comparison with Gemini:", error);
         throw new Error("Failed to compare analyses. Please try again.");

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAI_Blob } from '@google/genai';
-import { MicrophoneIcon, StopCircleIcon, RobotIcon, UserIcon, DownloadIcon, RefreshCwIcon } from './icons';
-import { getDailyTopics } from '../services/geminiService';
+import { MicrophoneIcon, StopCircleIcon, RobotIcon, UserIcon, DownloadIcon } from './icons';
 
 // --- Audio Utility Functions ---
 // These are necessary for handling the raw audio data from the Gemini API.
@@ -74,10 +73,6 @@ export const LivePractice: React.FC = () => {
     const [selectedLanguage, setSelectedLanguage] = useState('English');
     const transcriptEndRef = useRef<HTMLDivElement>(null);
 
-    // Daily Topics State
-    const [dailyTopics, setDailyTopics] = useState<string[]>([]);
-    const [loadingTopics, setLoadingTopics] = useState(false);
-
     // Refs for Web Audio API and Gemini session management
     const sessionPromiseRef = useRef<any>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -92,17 +87,6 @@ export const LivePractice: React.FC = () => {
         // Auto-scroll transcript
         transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [transcript]);
-
-    const fetchTopics = async () => {
-        setLoadingTopics(true);
-        const topics = await getDailyTopics();
-        setDailyTopics(topics);
-        setLoadingTopics(false);
-    };
-
-    useEffect(() => {
-        fetchTopics();
-    }, []);
 
     const handleMessage = useCallback(async (message: LiveServerMessage) => {
         setTranscript(prev => {
@@ -263,7 +247,7 @@ export const LivePractice: React.FC = () => {
     const getStatusText = () => {
         switch (conversationState) {
             case 'connecting': return 'Connecting...';
-            case 'connected': return <span className="flex items-center justify-center gap-2 text-violet-300"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>Listening...</span>;
+            case 'connected': return <span className="flex items-center justify-center gap-2"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>Listening...</span>;
             case 'ended': return 'Conversation Ended';
             case 'error': return 'Connection Error';
             default: return '';
@@ -276,19 +260,19 @@ export const LivePractice: React.FC = () => {
                 return (
                     <button
                         onClick={startConversation}
-                        className="flex items-center justify-center gap-3 w-56 h-16 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 rounded-full text-lg font-bold transition-all duration-300 shadow-lg shadow-violet-900/40 hover:shadow-violet-900/60 transform hover:-translate-y-1"
+                        className="flex items-center justify-center gap-3 w-56 h-16 bg-indigo-600 hover:bg-indigo-700 rounded-full text-lg font-bold transition-all duration-200 ease-in-out shadow-lg hover:shadow-indigo-500/50"
                     >
                         <MicrophoneIcon className="w-6 h-6" />
-                        Start Speaking
+                        Start Conversation
                     </button>
                 );
             case 'connecting':
                 return (
                      <button
                         disabled
-                        className="flex items-center justify-center gap-3 w-56 h-16 bg-slate-700/50 rounded-full text-lg font-bold cursor-not-allowed text-slate-400"
+                        className="flex items-center justify-center gap-3 w-56 h-16 bg-gray-600 rounded-full text-lg font-bold cursor-not-allowed"
                     >
-                        <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                        <MicrophoneIcon className="w-6 h-6" />
                         Connecting...
                     </button>
                 );
@@ -296,29 +280,30 @@ export const LivePractice: React.FC = () => {
                 return (
                     <button
                         onClick={endConversation}
-                        className="flex items-center justify-center gap-3 w-56 h-16 bg-red-600 hover:bg-red-500 rounded-full text-lg font-bold transition-all duration-200 shadow-lg shadow-red-900/40 hover:shadow-red-900/60"
+                        className="flex items-center justify-center gap-3 w-56 h-16 bg-red-600 hover:bg-red-700 rounded-full text-lg font-bold transition-all duration-200 ease-in-out shadow-lg hover:shadow-red-500/50"
                     >
                         <StopCircleIcon className="w-6 h-6" />
-                        End Session
+                        End Conversation
                     </button>
                 );
             case 'ended':
             case 'error':
                  return (
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center space-x-4">
                         <button
                             onClick={startConversation}
-                            className="flex items-center justify-center gap-3 px-8 h-14 bg-indigo-600 hover:bg-indigo-500 rounded-full text-lg font-bold transition-all duration-300 shadow-lg shadow-indigo-900/40"
+                            className="flex items-center justify-center gap-3 px-6 h-14 bg-indigo-600 hover:bg-indigo-700 rounded-full text-lg font-bold transition-all duration-200 ease-in-out shadow-lg hover:shadow-indigo-500/50"
                         >
-                            <MicrophoneIcon className="w-5 h-5" />
+                            <MicrophoneIcon className="w-6 h-6" />
                             Practice Again
                         </button>
                         {transcript.length > 0 && (
                              <button
                                 onClick={handleDownloadTranscript}
-                                className="flex items-center justify-center gap-3 px-6 h-14 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full text-lg font-medium text-slate-300 transition-colors"
+                                className="flex items-center justify-center gap-3 px-6 h-14 bg-gray-600 hover:bg-gray-700 rounded-full text-lg font-bold transition-colors duration-200 ease-in-out"
                             >
-                                <DownloadIcon className="w-5 h-5" />
+                                <DownloadIcon className="w-6 h-6" />
+                                Download
                             </button>
                         )}
                     </div>
@@ -330,103 +315,48 @@ export const LivePractice: React.FC = () => {
 
 
     return (
-        <div className="w-full max-w-3xl flex flex-col items-center space-y-6 animate-in zoom-in-95 duration-300">
+        <div className="w-full max-w-2xl flex flex-col items-center space-y-4">
             
-            <div className="w-full flex justify-between items-center gap-4">
-                {/* Topic Suggestions Header/Card */}
-                 <div className="w-full">
-                    <div className="bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-2xl p-4 relative overflow-hidden group">
-                        <div className="flex justify-between items-center mb-3">
-                            <h3 className="text-sm font-bold text-violet-300 uppercase tracking-wider flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
-                                Today's Discussion Topics
-                            </h3>
-                            <button onClick={fetchTopics} className="text-slate-400 hover:text-white transition-colors" title="Refresh Topics">
-                                <RefreshCwIcon className={`w-4 h-4 ${loadingTopics ? 'animate-spin' : ''}`} />
-                            </button>
-                        </div>
-                        {loadingTopics ? (
-                            <div className="space-y-2">
-                                <div className="h-4 bg-slate-800 rounded w-3/4 animate-pulse"></div>
-                                <div className="h-4 bg-slate-800 rounded w-1/2 animate-pulse"></div>
-                                <div className="h-4 bg-slate-800 rounded w-5/6 animate-pulse"></div>
-                            </div>
-                        ) : (
-                            <div className="flex overflow-x-auto gap-3 pb-2 custom-scrollbar snap-x">
-                                {dailyTopics.map((topic, i) => (
-                                    <div key={i} className="snap-center flex-shrink-0 w-64 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl hover:bg-slate-700/50 transition-colors cursor-default">
-                                        <p className="text-sm text-slate-300 font-medium leading-snug">"{topic}"</p>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                         <p className="text-[10px] text-slate-500 mt-2 text-right italic">Topics generated daily based on current events & non-technical subjects.</p>
-                    </div>
-                </div>
+            <div className="w-full">
+                <label htmlFor="language-select" className="block text-sm font-medium text-gray-400 mb-1">
+                    Select Language
+                </label>
+                <select
+                    id="language-select"
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    disabled={conversationState !== 'idle' && conversationState !== 'ended' && conversationState !== 'error'}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                >
+                    <option value="English">English</option>
+                    <option value="Hindi">Hindi</option>
+                    <option value="Gujarati">Gujarati</option>
+                </select>
             </div>
 
-            {/* Language Selector */}
-            <div className="w-full flex justify-end">
-                <div className="relative inline-block w-48">
-                    <select
-                        id="language-select"
-                        value={selectedLanguage}
-                        onChange={(e) => setSelectedLanguage(e.target.value)}
-                        disabled={conversationState !== 'idle' && conversationState !== 'ended' && conversationState !== 'error'}
-                        className="w-full appearance-none bg-slate-800 border border-slate-700 hover:border-violet-500/50 rounded-xl px-4 py-2 pr-8 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 disabled:opacity-50 transition-colors cursor-pointer"
-                    >
-                        <option value="English">English</option>
-                        <option value="Hindi">Hindi</option>
-                        <option value="Gujarati">Gujarati</option>
-                        <option value="Spanish">Spanish</option>
-                        <option value="French">French</option>
-                        <option value="German">German</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
-                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                    </div>
-                </div>
-            </div>
-
-            <div className="w-full h-[500px] bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-3xl p-6 flex flex-col relative shadow-2xl">
-                <div className="flex-grow overflow-y-auto pr-3 space-y-6 custom-scrollbar">
+            <div className="w-full h-96 bg-gray-800 border border-gray-700 rounded-lg p-4 flex flex-col relative">
+                <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                     {transcript.map((turn, i) => (
-                        <div key={i} className={`flex items-start gap-4 ${turn.speaker === 'User' ? 'justify-end' : ''}`}>
-                            {turn.speaker === 'AI' && (
-                                <div className="w-10 h-10 rounded-full bg-slate-700/50 flex items-center justify-center flex-shrink-0 border border-slate-600">
-                                    <RobotIcon className="w-6 h-6 text-violet-400" />
-                                </div>
-                            )}
-                             <div className={`
-                                max-w-sm sm:max-w-md rounded-2xl px-5 py-3 shadow-md
-                                ${turn.speaker === 'User' 
-                                    ? 'bg-indigo-600 text-white rounded-br-none' 
-                                    : 'bg-slate-800 text-slate-200 rounded-bl-none'}
-                             `}>
-                                <p className="leading-relaxed">{turn.text}</p>
+                        <div key={i} className={`flex items-start gap-3 ${turn.speaker === 'User' ? 'justify-end' : ''}`}>
+                            {turn.speaker === 'AI' && <RobotIcon className="w-8 h-8 flex-shrink-0 bg-gray-700 text-indigo-400 p-1.5 rounded-full" />}
+                             <div className={`w-fit max-w-sm rounded-2xl px-4 py-2 ${turn.speaker === 'User' ? 'bg-indigo-600 rounded-br-none' : 'bg-gray-700 rounded-bl-none'}`}>
+                                <p className="text-white leading-relaxed">{turn.text}</p>
                             </div>
-                            {turn.speaker === 'User' && (
-                                <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center flex-shrink-0 border border-indigo-500/30">
-                                    <UserIcon className="w-6 h-6 text-indigo-300" />
-                                </div>
-                            )}
+                            {turn.speaker === 'User' && <UserIcon className="w-8 h-8 flex-shrink-0 bg-gray-700 text-gray-300 p-1.5 rounded-full" />}
                         </div>
                     ))}
                      <div ref={transcriptEndRef} />
                 </div>
                  {transcript.length === 0 && conversationState === 'idle' && (
-                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center text-slate-500 w-full px-8">
-                        <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-700/50">
-                             <MicrophoneIcon className="w-10 h-10 text-slate-600" />
-                        </div>
-                        <h3 className="text-xl font-semibold text-slate-300 mb-2">Start Practice Session</h3>
-                        <p>Have a natural conversation with AI to improve your fluency.</p>
+                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center text-gray-500 w-full">
+                        <p className="text-lg">Ready to practice?</p>
+                        <p>Click "Start Conversation" to begin.</p>
                     </div>
                 )}
-                <div className="h-10 pt-4 text-center text-sm font-medium text-slate-400 border-t border-slate-800 mt-2">{getStatusText()}</div>
+                <div className="h-8 pt-2 text-center text-gray-400 border-t border-gray-700 mt-2">{getStatusText()}</div>
             </div>
 
-            <div className="flex flex-col items-center pt-2">
+            <div className="flex flex-col items-center space-y-4 h-16">
                 {renderActionButtons()}
             </div>
         </div>

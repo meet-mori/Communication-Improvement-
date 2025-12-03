@@ -294,7 +294,7 @@ export const ResultsCard: React.FC<{ result: AnalysisResult, title?: string }> =
             
             <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 p-8 rounded-3xl">
                  <h3 className="text-lg font-semibold text-slate-400 mb-6 uppercase tracking-wider text-xs flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-pink-500"></span>
+                    <span class="w-2 h-2 rounded-full bg-pink-500"></span>
                     Filler Words
                 </h3>
                 <div className="flex flex-wrap gap-3">

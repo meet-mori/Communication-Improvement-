@@ -39,24 +39,6 @@ const generateContentWithRetry = async (model: string, params: any, retries = 3)
 // Switched to gemini-2.5-flash for better availability and speed
 const MODEL_NAME = 'gemini-2.5-flash';
 
-export const getPracticePrompt = async (): Promise<string> => {
-    try {
-        const response = await generateContentWithRetry(MODEL_NAME, {
-            contents: 'Generate a short, engaging, and random prompt for a user to practice their public speaking and communication skills. The prompt should be a single sentence or question. For example: "Describe your dream vacation." or "Explain a complex topic you are passionate about in simple terms."',
-            config: {
-                temperature: 0.9,
-                maxOutputTokens: 50,
-            }
-        });
-        // Clean up the response, removing potential quotes or extra text
-        return response?.text?.trim().replace(/^"|"$/g, '') || "Describe something you are passionate about.";
-    } catch (error) {
-        console.error("Error fetching practice prompt:", error);
-        // Return a fallback prompt
-        return "Describe something you are passionate about.";
-    }
-};
-
 export const getDailyTopics = async (): Promise<string[]> => {
     const date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const prompt = `Generate 10 unique, engaging conversation topics for today, ${date}.
@@ -67,7 +49,7 @@ export const getDailyTopics = async (): Promise<string[]> => {
     4. Return ONLY a JSON array of strings.`;
 
     try {
-        const response = await generateContentWithRetry(MODEL_NAME, {
+        const response: any = await generateContentWithRetry(MODEL_NAME, {
              contents: prompt,
              config: {
                  responseMimeType: "application/json",
@@ -233,7 +215,7 @@ export const analyzeAudio = async (audioFile: File): Promise<AnalysisResult> => 
     const textPart = { text: singleAnalysisPrompt };
 
     // Using gemini-2.5-flash with retry logic for production stability
-    const response = await generateContentWithRetry(MODEL_NAME, {
+    const response: any = await generateContentWithRetry(MODEL_NAME, {
         contents: { parts: [textPart, audioPart] },
         config: { 
             responseMimeType: "application/json", 
@@ -367,7 +349,7 @@ Instructions:
 
 export const generateComparisonReport = async (oldAnalysis: AnalysisResult, newAnalysis: AnalysisResult): Promise<ComparisonResult> => {
     try {
-        const response = await generateContentWithRetry(MODEL_NAME, {
+        const response: any = await generateContentWithRetry(MODEL_NAME, {
             contents: {
                 parts: [
                     { text: comparisonPrompt },
